@@ -60,3 +60,4 @@ SELECT
      JOIN diary_allotments da ON d.id = da.diary_id 
      WHERE da.status IN ('allotted', 'fully_sold')) as expected_amount_from_allotted;
 
+ary number 

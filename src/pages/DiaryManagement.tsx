@@ -257,9 +257,12 @@ const DiaryManagement: React.FC = () => {
     try {
       const updateData: any = { status };
       
-      // Set amount collected to 11,000 when status changes to paid
+      // Set amount collected based on status
       if (status === 'paid') {
         updateData.amount_collected = 11000;
+      } else {
+        // Reset amount collected to 0 for all other statuses (allotted, fully_sold, returned)
+        updateData.amount_collected = 0;
       }
       
       const { error } = await supabase
@@ -268,7 +271,12 @@ const DiaryManagement: React.FC = () => {
         .eq('id', allotmentId);
 
       if (error) throw error;
-      toast.success(`Status updated to ${status}${status === 'paid' ? ' and amount collected set to ₹11,000' : ''}`);
+      
+      const statusMessage = status === 'paid' 
+        ? ' and amount collected set to ₹11,000' 
+        : ' and amount collected reset to ₹0';
+      
+      toast.success(`Status updated to ${status}${statusMessage}`);
       fetchData();
     } catch (error) {
       console.error('Error updating status:', error);

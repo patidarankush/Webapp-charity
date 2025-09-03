@@ -90,6 +90,7 @@ export interface IssuerPerformance {
   issuer_name: string;
   contact_number: string;
   diaries_allotted: number;
+  diaries_paid: number;
   tickets_sold: number;
   total_collected: number;
   expected_amount: number;

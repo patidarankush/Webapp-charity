@@ -48,8 +48,8 @@ const TicketSales: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (watchedLotteryNumber && watchedLotteryNumber.length === 5) {
-      const lotteryNum = parseLotteryNumber(watchedLotteryNumber);
+    if (watchedLotteryNumber && watchedLotteryNumber.toString().length === 5) {
+      const lotteryNum = parseLotteryNumber(watchedLotteryNumber.toString());
       if (lotteryNum >= 1 && lotteryNum <= 39999) {
         handleLotteryNumberChange(lotteryNum);
       }
@@ -135,7 +135,7 @@ const TicketSales: React.FC = () => {
             }
           }, 100);
           
-          toast.warning(`Diary ${diaryNumber} is not allotted to any issuer. Please select an issuer manually.`);
+          toast.error(`Diary ${diaryNumber} is not allotted to any issuer. Please select an issuer manually.`);
         } else {
           setAutoFillData({ 
             issuer: allotmentData.issuer, 
@@ -227,7 +227,7 @@ const TicketSales: React.FC = () => {
 
   const handleEdit = (ticket: TicketSale) => {
     setEditingTicket(ticket);
-    setValue('lottery_number', formatLotteryNumber(ticket.lottery_number));
+    setValue('lottery_number', ticket.lottery_number);
     setValue('purchaser_name', ticket.purchaser_name);
     setValue('purchaser_contact', ticket.purchaser_contact);
     setValue('purchaser_address', ticket.purchaser_address || '');
@@ -348,7 +348,7 @@ const TicketSales: React.FC = () => {
                             value: /^[0-9]{5}$/,
                             message: 'Lottery number must be 5 digits (00001-39999)'
                           },
-                          validate: (value) => {
+                          validate: (value: string) => {
                             const num = parseLotteryNumber(value);
                             if (num < 1 || num > 39999) {
                               return 'Lottery number must be between 00001 and 39999';

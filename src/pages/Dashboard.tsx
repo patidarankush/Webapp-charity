@@ -312,6 +312,7 @@ const Dashboard: React.FC = () => {
                   <th className="table-header-cell">Issuer Name</th>
                   <th className="table-header-cell">Contact</th>
                   <th className="table-header-cell">Diaries Allotted</th>
+                  <th className="table-header-cell">Diaries Paid</th>
                   <th className="table-header-cell">Tickets Sold</th>
                   <th className="table-header-cell">Amount Collected</th>
                   <th className="table-header-cell">Expected Amount</th>
@@ -324,9 +325,10 @@ const Dashboard: React.FC = () => {
                     <td className="table-cell font-medium">{issuer?.issuer_name || 'N/A'}</td>
                     <td className="table-cell">{issuer?.contact_number || 'N/A'}</td>
                     <td className="table-cell">{issuer?.diaries_allotted || 0}</td>
+                    <td className="table-cell">{issuer?.diaries_paid || 0}</td>
                     <td className="table-cell">{issuer?.tickets_sold || 0}</td>
-                                         <td className="table-cell">₹{issuer?.total_collected?.toLocaleString() || '0'}</td>
-                     <td className="table-cell">₹{issuer?.expected_amount?.toLocaleString() || '0'}</td>
+                    <td className="table-cell">₹{issuer?.total_collected?.toLocaleString() || '0'}</td>
+                    <td className="table-cell">₹{issuer?.expected_amount?.toLocaleString() || '0'}</td>
                     <td className="table-cell">
                       <span className={`
                         badge
