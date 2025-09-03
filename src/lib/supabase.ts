@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-  console.warn('Supabase environment variables not set. Using placeholder values. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Supabase environment variables are not set. Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -80,6 +80,7 @@ export interface DashboardStats {
   diaries_fully_sold: number;
   diaries_paid: number;
   diaries_returned: number;
+  diaries_remaining: number;
   total_amount_collected: number;
   expected_amount_from_allotted: number;
 }
@@ -119,4 +120,23 @@ export function getTicketRangeForDiary(diaryNumber: number): { start: number; en
 export function validateLotteryNumberForDiary(lotteryNumber: number, diaryNumber: number): boolean {
   const range = getTicketRangeForDiary(diaryNumber);
   return lotteryNumber >= range.start && lotteryNumber <= range.end;
+}
+
+// Helper function to format lottery number as 5-digit string
+export function formatLotteryNumber(lotteryNumber: number): string {
+  return lotteryNumber.toString().padStart(5, '0');
+}
+
+// Helper function to parse 5-digit lottery number string to number
+export function parseLotteryNumber(lotteryNumberString: string): number {
+  return parseInt(lotteryNumberString, 10);
+}
+
+// Helper function to get formatted ticket range for a diary
+export function getFormattedTicketRangeForDiary(diaryNumber: number): { start: string; end: string } {
+  const range = getTicketRangeForDiary(diaryNumber);
+  return {
+    start: formatLotteryNumber(range.start),
+    end: formatLotteryNumber(range.end)
+  };
 }

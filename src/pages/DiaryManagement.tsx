@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { supabase, DiaryAllotment, Issuer, Diary } from '../lib/supabase';
+import { supabase, DiaryAllotment, Issuer, Diary, formatLotteryNumber } from '../lib/supabase';
 import { 
   Plus, 
   Edit, 
@@ -490,7 +490,7 @@ const DiaryManagement: React.FC = () => {
                         <option value="">Select diary</option>
                         {diaries.map(diary => (
                           <option key={diary.id} value={diary.id}>
-                            Diary {diary.diary_number} (Tickets: {diary.ticket_start_range}-{diary.ticket_end_range})
+                            Diary {diary.diary_number} (Tickets: {formatLotteryNumber(diary.ticket_start_range)}-{formatLotteryNumber(diary.ticket_end_range)})
                           </option>
                         ))}
                       </select>
@@ -602,7 +602,7 @@ const DiaryManagement: React.FC = () => {
                           Diary {allotment.diary?.diary_number}
                         </span>
                         <div className="text-xs text-secondary-500 mt-1">
-                          Tickets: {allotment.diary?.ticket_start_range}-{allotment.diary?.ticket_end_range}
+                          Tickets: {allotment.diary ? formatLotteryNumber(allotment.diary.ticket_start_range) : 'N/A'}-{allotment.diary ? formatLotteryNumber(allotment.diary.ticket_end_range) : 'N/A'}
                         </div>
                       </td>
                       <td className="table-cell">

@@ -14,7 +14,17 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<DashboardStats>({
+    total_tickets_sold: 0,
+    total_revenue: 0,
+    diaries_allotted: 0,
+    diaries_fully_sold: 0,
+    diaries_paid: 0,
+    diaries_returned: 0,
+    diaries_remaining: 0,
+    total_amount_collected: 0,
+    expected_amount_from_allotted: 0
+  });
   const [issuerPerformance, setIssuerPerformance] = useState<IssuerPerformance[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,22 +36,52 @@ const Dashboard: React.FC = () => {
     try {
       setLoading(true);
       
-      // For now, use mock data since Supabase isn't configured
-      const mockStats = {
-        total_tickets_sold: 0,
-        total_revenue: 0,
-        diaries_allotted: 0,
-        diaries_fully_sold: 0,
-        diaries_paid: 0,
-        diaries_returned: 0,
-        total_amount_collected: 0,
-        expected_amount_from_allotted: 0
-      };
+      // Fetch dashboard stats
+      const { data: statsData, error: statsError } = await supabase
+        .from('dashboard_stats')
+        .select('*')
+        .single();
 
-      const mockIssuerPerformance: IssuerPerformance[] = [];
+      if (statsError) {
+        console.error('Error fetching dashboard stats:', statsError);
+        // Use default values if view doesn't exist yet
+        setStats({
+          total_tickets_sold: 0,
+          total_revenue: 0,
+          diaries_allotted: 0,
+          diaries_fully_sold: 0,
+          diaries_paid: 0,
+          diaries_returned: 0,
+          diaries_remaining: 0,
+          total_amount_collected: 0,
+          expected_amount_from_allotted: 0
+        });
+      } else {
+        setStats(statsData || {
+          total_tickets_sold: 0,
+          total_revenue: 0,
+          diaries_allotted: 0,
+          diaries_fully_sold: 0,
+          diaries_paid: 0,
+          diaries_returned: 0,
+          diaries_remaining: 0,
+          total_amount_collected: 0,
+          expected_amount_from_allotted: 0
+        });
+      }
 
-      setStats(mockStats);
-      setIssuerPerformance(mockIssuerPerformance);
+      // Fetch issuer performance
+      const { data: issuerData, error: issuerError } = await supabase
+        .from('issuer_performance')
+        .select('*')
+        .order('total_collected', { ascending: false });
+
+      if (issuerError) {
+        console.error('Error fetching issuer performance:', issuerError);
+        setIssuerPerformance([]);
+      } else {
+        setIssuerPerformance(issuerData || []);
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -83,25 +123,16 @@ const Dashboard: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
-
-  if (!stats) {
-    return (
-      <div className="text-center py-12">
-        <AlertCircle className="mx-auto h-12 w-12 text-danger-400" />
-        <h3 className="mt-2 text-sm font-medium text-secondary-900">No data available</h3>
-        <p className="mt-1 text-sm text-secondary-500">Unable to load dashboard statistics.</p>
+        <span className="ml-3 text-secondary-600">Loading dashboard...</span>
       </div>
     );
   }
 
   const pieData = [
-    { name: 'Allotted', value: stats.diaries_allotted, color: '#f59e0b' },
-    { name: 'Fully Sold', value: stats.diaries_fully_sold, color: '#22c55e' },
-    { name: 'Paid', value: stats.diaries_paid, color: '#16a34a' },
-    { name: 'Returned', value: stats.diaries_returned, color: '#ef4444' },
+    { name: 'Allotted', value: stats?.diaries_allotted || 0, color: '#f59e0b' },
+    { name: 'Fully Sold', value: stats?.diaries_fully_sold || 0, color: '#22c55e' },
+    { name: 'Paid', value: stats?.diaries_paid || 0, color: '#16a34a' },
+    { name: 'Returned', value: stats?.diaries_returned || 0, color: '#ef4444' },
   ];
 
   const topIssuers = issuerPerformance.slice(0, 10);
@@ -117,7 +148,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <div className="stat-card">
           <div className="flex items-center">
             <div className="flex-shrink-0">
@@ -126,7 +157,7 @@ const Dashboard: React.FC = () => {
             <div className="ml-5 w-0 flex-1">
               <dl>
                 <dt className="stat-label">Tickets Sold</dt>
-                <dd className="stat-value">{stats.total_tickets_sold.toLocaleString()}</dd>
+                <dd className="stat-value">{stats?.total_tickets_sold?.toLocaleString() || '0'}</dd>
               </dl>
             </div>
           </div>
@@ -140,7 +171,7 @@ const Dashboard: React.FC = () => {
             <div className="ml-5 w-0 flex-1">
               <dl>
                 <dt className="stat-label">Total Revenue</dt>
-                <dd className="stat-value">₹{stats.total_revenue.toLocaleString()}</dd>
+                <dd className="stat-value">₹{stats?.total_revenue?.toLocaleString() || '0'}</dd>
               </dl>
             </div>
           </div>
@@ -154,7 +185,7 @@ const Dashboard: React.FC = () => {
             <div className="ml-5 w-0 flex-1">
               <dl>
                 <dt className="stat-label">Diaries Allotted</dt>
-                <dd className="stat-value">{stats.diaries_allotted}</dd>
+                <dd className="stat-value">{stats?.diaries_allotted || '0'}</dd>
               </dl>
             </div>
           </div>
@@ -169,10 +200,38 @@ const Dashboard: React.FC = () => {
               <dl>
                 <dt className="stat-label">Collection Rate</dt>
                 <dd className="stat-value">
-                  {stats.expected_amount_from_allotted > 0 
-                    ? Math.round((stats.total_amount_collected / stats.expected_amount_from_allotted) * 100)
+                  {stats?.expected_amount_from_allotted > 0 
+                    ? Math.round(((stats?.total_amount_collected || 0) / (stats?.expected_amount_from_allotted || 1)) * 100)
                     : 0}%
                 </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <CheckCircle className="h-8 w-8 text-success-600" />
+            </div>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="stat-label">Paid Diaries</dt>
+                <dd className="stat-value">{stats?.diaries_paid || '0'}</dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <Clock className="h-8 w-8 text-warning-600" />
+            </div>
+            <div className="ml-5 w-0 flex-1">
+              <dl>
+                <dt className="stat-label">Remaining Diaries</dt>
+                <dd className="stat-value">{stats?.diaries_remaining || '0'}</dd>
               </dl>
             </div>
           </div>
@@ -262,19 +321,19 @@ const Dashboard: React.FC = () => {
               <tbody className="table-body">
                 {issuerPerformance.map((issuer) => (
                   <tr key={issuer.id} className="table-row">
-                    <td className="table-cell font-medium">{issuer.issuer_name}</td>
-                    <td className="table-cell">{issuer.contact_number}</td>
-                    <td className="table-cell">{issuer.diaries_allotted}</td>
-                    <td className="table-cell">{issuer.tickets_sold}</td>
-                    <td className="table-cell">₹{issuer.total_collected.toLocaleString()}</td>
-                    <td className="table-cell">₹{issuer.expected_amount.toLocaleString()}</td>
+                    <td className="table-cell font-medium">{issuer?.issuer_name || 'N/A'}</td>
+                    <td className="table-cell">{issuer?.contact_number || 'N/A'}</td>
+                    <td className="table-cell">{issuer?.diaries_allotted || 0}</td>
+                    <td className="table-cell">{issuer?.tickets_sold || 0}</td>
+                                         <td className="table-cell">₹{issuer?.total_collected?.toLocaleString() || '0'}</td>
+                     <td className="table-cell">₹{issuer?.expected_amount?.toLocaleString() || '0'}</td>
                     <td className="table-cell">
                       <span className={`
                         badge
-                        ${issuer.collection_percentage >= 80 ? 'badge-success' : 
-                          issuer.collection_percentage >= 50 ? 'badge-warning' : 'badge-danger'}
+                        ${(issuer?.collection_percentage || 0) >= 80 ? 'badge-success' : 
+                          (issuer?.collection_percentage || 0) >= 50 ? 'badge-warning' : 'badge-danger'}
                       `}>
-                        {issuer.collection_percentage}%
+                        {issuer?.collection_percentage || 0}%
                       </span>
                     </td>
                   </tr>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, TicketSale, DiaryAllotment, Issuer, Diary } from '../lib/supabase';
+import { supabase, TicketSale, DiaryAllotment, Issuer, Diary, formatLotteryNumber, parseLotteryNumber } from '../lib/supabase';
 import { 
   Search as SearchIcon, 
   Filter, 
@@ -53,6 +53,7 @@ const Search: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'tickets' | 'allotments'>('tickets');
   const [showFilters, setShowFilters] = useState(false);
+  const [quickSearchTerm, setQuickSearchTerm] = useState('');
 
   const handleFilterChange = (key: keyof SearchFilters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -81,7 +82,8 @@ const Search: React.FC = () => {
 
       // Apply filters
       if (filters.lottery_number) {
-        ticketQuery = ticketQuery.eq('lottery_number', parseInt(filters.lottery_number));
+        const lotteryNum = parseLotteryNumber(filters.lottery_number);
+        ticketQuery = ticketQuery.eq('lottery_number', lotteryNum);
       }
 
       if (filters.purchaser_name) {
@@ -162,6 +164,62 @@ const Search: React.FC = () => {
       amount_max: '',
     });
     setSearchResults({ tickets: [], allotments: [] });
+  };
+
+  const handleQuickSearch = async () => {
+    if (!quickSearchTerm.trim()) {
+      toast.error('Please enter a lottery number');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Parse the lottery number (handle both 5-digit and regular format)
+      let lotteryNumber: number;
+      if (quickSearchTerm.length === 5 && /^[0-9]{5}$/.test(quickSearchTerm)) {
+        // 5-digit format (00005)
+        lotteryNumber = parseLotteryNumber(quickSearchTerm);
+      } else if (/^[0-9]+$/.test(quickSearchTerm)) {
+        // Regular number format (5)
+        lotteryNumber = parseInt(quickSearchTerm, 10);
+      } else {
+        toast.error('Please enter a valid lottery number');
+        return;
+      }
+
+      // Validate range
+      if (lotteryNumber < 1 || lotteryNumber > 39999) {
+        toast.error('Lottery number must be between 00001 and 39999');
+        return;
+      }
+
+      // Search for the ticket
+      const { data: tickets, error } = await supabase
+        .from('ticket_sales')
+        .select(`
+          *,
+          issuer:issuers(*),
+          diary:diaries(*)
+        `)
+        .eq('lottery_number', lotteryNumber);
+
+      if (error) throw error;
+
+      if (tickets && tickets.length > 0) {
+        setSearchResults({ tickets, allotments: [] });
+        setActiveTab('tickets');
+        toast.success(`Found ticket for lottery number ${formatLotteryNumber(lotteryNumber)}`);
+      } else {
+        setSearchResults({ tickets: [], allotments: [] });
+        toast.info(`No ticket found for lottery number ${formatLotteryNumber(lotteryNumber)}`);
+      }
+    } catch (error) {
+      console.error('Error searching for lottery number:', error);
+      toast.error('Failed to search for lottery number');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const exportResults = () => {
@@ -268,6 +326,37 @@ const Search: React.FC = () => {
         </div>
       </div>
 
+      {/* Center Search Bar */}
+      <div className="bg-white rounded-lg shadow-soft p-6">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-center mb-4">
+            <h2 className="text-lg font-semibold text-secondary-900 mb-2">Quick Lottery Search</h2>
+            <p className="text-sm text-secondary-600">Enter a lottery number to find ticket details instantly</p>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <input
+                type="text"
+                value={quickSearchTerm}
+                onChange={(e) => setQuickSearchTerm(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleQuickSearch()}
+                className="input text-center text-lg font-mono"
+                placeholder="Enter lottery number (e.g., 00005 or 5)"
+                maxLength={5}
+              />
+            </div>
+            <button
+              onClick={handleQuickSearch}
+              className="btn btn-primary px-6"
+              disabled={!quickSearchTerm.trim()}
+            >
+              <SearchIcon className="h-5 w-5 mr-2" />
+              Search
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Search Filters */}
       {showFilters && (
         <div className="card">
@@ -283,11 +372,12 @@ const Search: React.FC = () => {
                   Lottery Number
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   value={filters.lottery_number}
                   onChange={(e) => handleFilterChange('lottery_number', e.target.value)}
                   className="input"
-                  placeholder="Enter lottery number"
+                  placeholder="Enter lottery number (00001-39999)"
+                  maxLength={5}
                 />
               </div>
 
@@ -468,6 +558,58 @@ const Search: React.FC = () => {
         </nav>
       </div>
 
+      {/* Quick Search Results */}
+      {quickSearchTerm && searchResults.tickets.length > 0 && (
+        <div className="bg-primary-50 border border-primary-200 rounded-lg p-6">
+          <div className="text-center mb-4">
+            <h3 className="text-lg font-semibold text-primary-900 mb-2">
+              🎫 Lottery Ticket Found!
+            </h3>
+            <p className="text-sm text-primary-700">
+              Lottery Number: <span className="font-mono font-bold text-lg">{formatLotteryNumber(searchResults.tickets[0].lottery_number)}</span>
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="bg-white rounded-lg p-4 shadow-sm">
+              <h4 className="font-semibold text-secondary-900 mb-2">Purchaser Details</h4>
+              <p className="text-sm text-secondary-700"><strong>Name:</strong> {searchResults.tickets[0].purchaser_name}</p>
+              <p className="text-sm text-secondary-700"><strong>Contact:</strong> {searchResults.tickets[0].purchaser_contact}</p>
+              {searchResults.tickets[0].purchaser_address && (
+                <p className="text-sm text-secondary-700"><strong>Address:</strong> {searchResults.tickets[0].purchaser_address}</p>
+              )}
+            </div>
+            <div className="bg-white rounded-lg p-4 shadow-sm">
+              <h4 className="font-semibold text-secondary-900 mb-2">Sale Details</h4>
+              <p className="text-sm text-secondary-700"><strong>Amount:</strong> ₹{searchResults.tickets[0].amount_paid}</p>
+              <p className="text-sm text-secondary-700"><strong>Date:</strong> {new Date(searchResults.tickets[0].purchase_date).toLocaleDateString('en-IN')}</p>
+              <p className="text-sm text-secondary-700"><strong>Issuer:</strong> {searchResults.tickets[0].issuer?.issuer_name}</p>
+            </div>
+            <div className="bg-white rounded-lg p-4 shadow-sm">
+              <h4 className="font-semibold text-secondary-900 mb-2">Diary Information</h4>
+              <p className="text-sm text-secondary-700"><strong>Diary:</strong> {searchResults.tickets[0].diary?.diary_number}</p>
+              <p className="text-sm text-secondary-700"><strong>Range:</strong> {searchResults.tickets[0].diary ? formatLotteryNumber(searchResults.tickets[0].diary.ticket_start_range) : 'N/A'}-{searchResults.tickets[0].diary ? formatLotteryNumber(searchResults.tickets[0].diary.ticket_end_range) : 'N/A'}</p>
+              <p className="text-sm text-secondary-700"><strong>Total Tickets:</strong> {searchResults.tickets[0].diary?.total_tickets}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Search No Results */}
+      {quickSearchTerm && searchResults.tickets.length === 0 && !loading && (
+        <div className="bg-warning-50 border border-warning-200 rounded-lg p-6 text-center">
+          <div className="text-warning-600 mb-2">
+            <AlertCircle className="h-12 w-12 mx-auto mb-3" />
+            <h3 className="text-lg font-semibold">No Ticket Found</h3>
+            <p className="text-sm">
+              No ticket found for lottery number <span className="font-mono font-bold">{quickSearchTerm}</span>
+            </p>
+            <p className="text-xs text-warning-600 mt-2">
+              Make sure the lottery number is correct and the ticket has been sold.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Results */}
       {loading ? (
         <div className="flex items-center justify-center h-64">
@@ -499,7 +641,7 @@ const Search: React.FC = () => {
                     {searchResults.tickets.map((ticket) => (
                       <tr key={ticket.id} className="table-row">
                         <td className="table-cell font-mono font-medium">
-                          {ticket.lottery_number}
+                          {formatLotteryNumber(ticket.lottery_number)}
                         </td>
                         <td className="table-cell">
                           <div>

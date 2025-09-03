@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { supabase, TicketSale, Issuer, Diary, getDiaryFromLotteryNumber, validateLotteryNumberForDiary } from '../lib/supabase';
+import { supabase, TicketSale, Issuer, Diary, getDiaryFromLotteryNumber, validateLotteryNumberForDiary, formatLotteryNumber, parseLotteryNumber, getFormattedTicketRangeForDiary } from '../lib/supabase';
 import { 
   Plus, 
   Edit, 
@@ -48,8 +48,14 @@ const TicketSales: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (watchedLotteryNumber && watchedLotteryNumber >= 1 && watchedLotteryNumber <= 39999) {
-      handleLotteryNumberChange(watchedLotteryNumber);
+    if (watchedLotteryNumber && watchedLotteryNumber.length === 5) {
+      const lotteryNum = parseLotteryNumber(watchedLotteryNumber);
+      if (lotteryNum >= 1 && lotteryNum <= 39999) {
+        handleLotteryNumberChange(lotteryNum);
+      }
+    } else if (!watchedLotteryNumber) {
+      // Clear auto-fill data when lottery number is cleared
+      setAutoFillData(null);
     }
   }, [watchedLotteryNumber]);
 
@@ -115,7 +121,21 @@ const TicketSales: React.FC = () => {
 
         if (error || !allotmentData) {
           setAutoFillData({ diary });
-          toast.error(`Diary ${diaryNumber} is not allotted to any issuer`);
+          
+          // Still auto-fill diary and amount even if not allotted
+          setValue('diary_id', diary.id, { shouldValidate: true });
+          setValue('amount_paid', 500, { shouldValidate: true });
+          setValue('purchase_date', new Date().toISOString().split('T')[0], { shouldValidate: true });
+          
+          // Trigger form validation
+          setTimeout(() => {
+            const form = document.querySelector('form');
+            if (form) {
+              form.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }, 100);
+          
+          toast.warning(`Diary ${diaryNumber} is not allotted to any issuer. Please select an issuer manually.`);
         } else {
           setAutoFillData({ 
             issuer: allotmentData.issuer, 
@@ -123,10 +143,19 @@ const TicketSales: React.FC = () => {
           });
           
           // Auto-fill form fields
-          setValue('diary_id', diary.id);
-          setValue('issuer_id', allotmentData.issuer.id);
-          setValue('amount_paid', 500);
-          setValue('purchase_date', new Date().toISOString().split('T')[0]);
+          setValue('diary_id', diary.id, { shouldValidate: true });
+          setValue('issuer_id', allotmentData.issuer.id, { shouldValidate: true });
+          setValue('amount_paid', 500, { shouldValidate: true });
+          setValue('purchase_date', new Date().toISOString().split('T')[0], { shouldValidate: true });
+          
+          // Trigger form validation after a short delay to ensure values are set
+          setTimeout(() => {
+            // Force re-validation of the form
+            const form = document.querySelector('form');
+            if (form) {
+              form.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }, 100);
           
           toast.success(`Auto-filled diary ${diaryNumber} details`);
         }
@@ -138,10 +167,13 @@ const TicketSales: React.FC = () => {
 
   const onSubmit = async (data: TicketFormData) => {
     try {
+      // Convert lottery number string to number
+      const lotteryNumber = parseLotteryNumber(data.lottery_number as any);
+      
       // Validate lottery number range for diary
       if (data.diary_id) {
         const diary = diaries.find(d => d.id === data.diary_id);
-        if (diary && !validateLotteryNumberForDiary(data.lottery_number, diary.diary_number)) {
+        if (diary && !validateLotteryNumberForDiary(lotteryNumber, diary.diary_number)) {
           toast.error(`Lottery number ${data.lottery_number} is not valid for diary ${diary.diary_number}`);
           return;
         }
@@ -152,7 +184,7 @@ const TicketSales: React.FC = () => {
         const { error } = await supabase
           .from('ticket_sales')
           .update({
-            lottery_number: data.lottery_number,
+            lottery_number: lotteryNumber,
             purchaser_name: data.purchaser_name,
             purchaser_contact: data.purchaser_contact,
             purchaser_address: data.purchaser_address,
@@ -169,7 +201,10 @@ const TicketSales: React.FC = () => {
         // Create new ticket
         const { error } = await supabase
           .from('ticket_sales')
-          .insert([data]);
+          .insert([{
+            ...data,
+            lottery_number: lotteryNumber
+          }]);
 
         if (error) throw error;
         toast.success('Ticket added successfully');
@@ -192,7 +227,7 @@ const TicketSales: React.FC = () => {
 
   const handleEdit = (ticket: TicketSale) => {
     setEditingTicket(ticket);
-    setValue('lottery_number', ticket.lottery_number);
+    setValue('lottery_number', formatLotteryNumber(ticket.lottery_number));
     setValue('purchaser_name', ticket.purchaser_name);
     setValue('purchaser_contact', ticket.purchaser_contact);
     setValue('purchaser_address', ticket.purchaser_address || '');
@@ -229,6 +264,7 @@ const TicketSales: React.FC = () => {
   };
 
   const filteredTickets = tickets.filter(ticket =>
+    formatLotteryNumber(ticket.lottery_number).includes(searchTerm) ||
     ticket.lottery_number.toString().includes(searchTerm) ||
     ticket.purchaser_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     ticket.purchaser_contact.includes(searchTerm) ||
@@ -305,14 +341,24 @@ const TicketSales: React.FC = () => {
                         Lottery Number *
                       </label>
                       <input
-                        type="number"
+                        type="text"
                         {...register('lottery_number', { 
                           required: 'Lottery number is required',
-                          min: { value: 1, message: 'Minimum lottery number is 1' },
-                          max: { value: 39999, message: 'Maximum lottery number is 39999' }
+                          pattern: {
+                            value: /^[0-9]{5}$/,
+                            message: 'Lottery number must be 5 digits (00001-39999)'
+                          },
+                          validate: (value) => {
+                            const num = parseLotteryNumber(value);
+                            if (num < 1 || num > 39999) {
+                              return 'Lottery number must be between 00001 and 39999';
+                            }
+                            return true;
+                          }
                         })}
                         className="input"
-                        placeholder="Enter lottery number (1-39999)"
+                        placeholder="Enter lottery number (00001-39999)"
+                        maxLength={5}
                       />
                       {errors.lottery_number && (
                         <p className="mt-1 text-sm text-danger-600">{errors.lottery_number.message}</p>
@@ -326,16 +372,25 @@ const TicketSales: React.FC = () => {
                           <CheckCircle className="h-4 w-4 text-primary-600 mr-2" />
                           <span className="text-sm font-medium text-primary-800">Auto-filled Information</span>
                         </div>
-                        {autoFillData.diary && (
-                          <p className="text-sm text-primary-700 mt-1">
-                            Diary: {autoFillData.diary.diary_number} (Tickets: {autoFillData.diary.ticket_start_range}-{autoFillData.diary.ticket_end_range})
-                          </p>
-                        )}
-                        {autoFillData.issuer && (
+                        <div className="mt-2 space-y-1">
+                          {autoFillData.diary && (
+                            <p className="text-sm text-primary-700">
+                              <strong>Diary:</strong> {autoFillData.diary.diary_number} (Tickets: {formatLotteryNumber(autoFillData.diary.ticket_start_range)}-{formatLotteryNumber(autoFillData.diary.ticket_end_range)})
+                            </p>
+                          )}
+                          {autoFillData.issuer ? (
+                            <p className="text-sm text-primary-700">
+                              <strong>Issuer:</strong> {autoFillData.issuer.issuer_name} ({autoFillData.issuer.contact_number})
+                            </p>
+                          ) : (
+                            <p className="text-sm text-warning-700">
+                              <strong>Issuer:</strong> Not allotted - Please select manually
+                            </p>
+                          )}
                           <p className="text-sm text-primary-700">
-                            Issuer: {autoFillData.issuer.issuer_name} ({autoFillData.issuer.contact_number})
+                            <strong>Amount:</strong> ₹500.00 (can be changed)
                           </p>
-                        )}
+                        </div>
                       </div>
                     )}
 
@@ -421,7 +476,7 @@ const TicketSales: React.FC = () => {
                         <option value="">Select diary</option>
                         {diaries.map(diary => (
                           <option key={diary.id} value={diary.id}>
-                            Diary {diary.diary_number} (Tickets: {diary.ticket_start_range}-{diary.ticket_end_range})
+                            Diary {diary.diary_number} (Tickets: {formatLotteryNumber(diary.ticket_start_range)}-{formatLotteryNumber(diary.ticket_end_range)})
                           </option>
                         ))}
                       </select>
@@ -516,7 +571,7 @@ const TicketSales: React.FC = () => {
                 {filteredTickets.map((ticket) => (
                   <tr key={ticket.id} className="table-row">
                     <td className="table-cell font-mono font-medium">
-                      {ticket.lottery_number}
+                      {formatLotteryNumber(ticket.lottery_number)}
                     </td>
                     <td className="table-cell">
                       <div>

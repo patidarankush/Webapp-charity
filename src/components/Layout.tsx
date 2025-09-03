@@ -7,8 +7,12 @@ import {
   Search, 
   Menu, 
   X,
-  Building2
+  Building2,
+  LogOut,
+  User
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -17,6 +21,17 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const { user, signOut } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast.success('Logged out successfully');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Failed to logout');
+    }
+  };
 
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -113,14 +128,30 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <Menu className="h-6 w-6" />
             </button>
             
-            <div className="flex-1 flex items-center justify-center lg:justify-end">
-              <div className="text-sm text-secondary-500">
+            <div className="flex-1 flex items-center justify-center lg:justify-between">
+              <div className="hidden lg:block text-sm text-secondary-500">
                 {new Date().toLocaleDateString('en-IN', {
                   weekday: 'long',
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric'
                 })}
+              </div>
+              
+              {/* User info and logout */}
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2 text-sm text-secondary-600">
+                  <User className="h-4 w-4" />
+                  <span className="hidden sm:block">{user?.email}</span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center space-x-1 px-3 py-2 text-sm text-secondary-600 hover:text-danger-600 hover:bg-danger-50 rounded-md transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="hidden sm:block">Logout</span>
+                </button>
               </div>
             </div>
           </div>

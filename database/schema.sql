@@ -191,6 +191,7 @@ SELECT
     (SELECT COUNT(*) FROM diary_allotments WHERE status = 'fully_sold') as diaries_fully_sold,
     (SELECT COUNT(*) FROM diary_allotments WHERE status = 'paid') as diaries_paid,
     (SELECT COUNT(*) FROM diary_allotments WHERE status = 'returned') as diaries_returned,
+    (SELECT COUNT(*) FROM diaries WHERE id NOT IN (SELECT diary_id FROM diary_allotments WHERE status IN ('allotted', 'fully_sold', 'paid'))) as diaries_remaining,
     (SELECT SUM(amount_collected) FROM diary_allotments) as total_amount_collected,
     (SELECT SUM(expected_amount) FROM diaries d 
      JOIN diary_allotments da ON d.id = da.diary_id 
