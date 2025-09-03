@@ -348,9 +348,8 @@ const TicketSales: React.FC = () => {
                             value: /^[0-9]{5}$/,
                             message: 'Lottery number must be 5 digits (00001-39999)'
                           },
-                          validate: (value: string) => {
-                            const num = parseLotteryNumber(value);
-                            if (num < 1 || num > 39999) {
+                          validate: (value: number) => {
+                            if (value < 1 || value > 39999) {
                               return 'Lottery number must be between 00001 and 39999';
                             }
                             return true;
