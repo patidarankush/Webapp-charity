@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, TicketSale, DiaryAllotment, Issuer, Diary, formatLotteryNumber, parseLotteryNumber } from '../lib/supabase';
+import { supabase, TicketSale, DiaryAllotment, Issuer, Diary, formatLotteryNumber, parseLotteryNumber, getDiaryFromLotteryNumber } from '../lib/supabase';
 import { 
   Search as SearchIcon, 
   Filter, 
@@ -24,11 +24,10 @@ interface SearchFilters {
   purchaser_contact: string;
   issuer_name: string;
   diary_number: string;
+  first_diary_number: string;
   date_from: string;
   date_to: string;
   status: string;
-  amount_min: string;
-  amount_max: string;
 }
 
 const Search: React.FC = () => {
@@ -38,11 +37,10 @@ const Search: React.FC = () => {
     purchaser_contact: '',
     issuer_name: '',
     diary_number: '',
+    first_diary_number: '',
     date_from: '',
     date_to: '',
     status: '',
-    amount_min: '',
-    amount_max: '',
   });
   
   const [searchResults, setSearchResults] = useState<{
@@ -95,14 +93,70 @@ const Search: React.FC = () => {
       }
 
       if (filters.issuer_name) {
-        ticketQuery = ticketQuery.ilike('issuer.issuer_name', `%${filters.issuer_name}%`);
-        allotmentQuery = allotmentQuery.ilike('issuer.issuer_name', `%${filters.issuer_name}%`);
+        // First get issuers that match the name
+        const { data: issuers, error: issuerError } = await supabase
+          .from('issuers')
+          .select('id')
+          .ilike('issuer_name', `%${filters.issuer_name}%`);
+        
+        if (issuerError) throw issuerError;
+        
+        if (issuers && issuers.length > 0) {
+          const issuerIds = issuers.map(i => i.id);
+          ticketQuery = ticketQuery.in('issuer_id', issuerIds);
+          allotmentQuery = allotmentQuery.in('issuer_id', issuerIds);
+        } else {
+          // If no issuers found, return empty results
+          setSearchResults({ tickets: [], allotments: [] });
+          toast.error(`No issuer found with name containing "${filters.issuer_name}"`);
+          return;
+        }
       }
 
       if (filters.diary_number) {
         const diaryNumber = parseInt(filters.diary_number);
-        ticketQuery = ticketQuery.eq('diary.diary_number', diaryNumber);
-        allotmentQuery = allotmentQuery.eq('diary.diary_number', diaryNumber);
+        // Get the diary first to get its ID
+        const { data: diary, error: diaryError } = await supabase
+          .from('diaries')
+          .select('id')
+          .eq('diary_number', diaryNumber)
+          .single();
+        
+        if (diaryError) throw diaryError;
+        
+        if (diary) {
+          // Show all tickets from this diary
+          ticketQuery = ticketQuery.eq('diary_id', diary.id);
+          allotmentQuery = allotmentQuery.eq('diary_id', diary.id);
+        } else {
+          // If no diary found, return empty results
+          setSearchResults({ tickets: [], allotments: [] });
+          toast.error(`No diary found with number ${diaryNumber}`);
+          return;
+        }
+      }
+
+      if (filters.first_diary_number) {
+        const firstTicketNumber = parseInt(filters.first_diary_number);
+        // Find all diaries that have this lottery number as their first ticket
+        const { data: diaries, error: diaryError } = await supabase
+          .from('diaries')
+          .select('id')
+          .eq('ticket_start_range', firstTicketNumber);
+        
+        if (diaryError) throw diaryError;
+        
+        if (diaries && diaries.length > 0) {
+          const diaryIds = diaries.map(d => d.id);
+          // Show all tickets from all diaries that have this lottery number as their first ticket
+          ticketQuery = ticketQuery.in('diary_id', diaryIds);
+          allotmentQuery = allotmentQuery.in('diary_id', diaryIds);
+        } else {
+          // If no diaries found, return empty results
+          setSearchResults({ tickets: [], allotments: [] });
+          toast.error(`No diaries found with lottery number ${formatLotteryNumber(firstTicketNumber)} as first ticket`);
+          return;
+        }
       }
 
       if (filters.date_from) {
@@ -117,14 +171,6 @@ const Search: React.FC = () => {
 
       if (filters.status) {
         allotmentQuery = allotmentQuery.eq('status', filters.status);
-      }
-
-      if (filters.amount_min) {
-        ticketQuery = ticketQuery.gte('amount_paid', parseFloat(filters.amount_min));
-      }
-
-      if (filters.amount_max) {
-        ticketQuery = ticketQuery.lte('amount_paid', parseFloat(filters.amount_max));
       }
 
       // Execute queries
@@ -157,11 +203,10 @@ const Search: React.FC = () => {
       purchaser_contact: '',
       issuer_name: '',
       diary_number: '',
+      first_diary_number: '',
       date_from: '',
       date_to: '',
       status: '',
-      amount_min: '',
-      amount_max: '',
     });
     setSearchResults({ tickets: [], allotments: [] });
   };
@@ -212,7 +257,7 @@ const Search: React.FC = () => {
         toast.success(`Found ticket for lottery number ${formatLotteryNumber(lotteryNumber)}`);
       } else {
         setSearchResults({ tickets: [], allotments: [] });
-        toast.info(`No ticket found for lottery number ${formatLotteryNumber(lotteryNumber)}`);
+        toast.error(`No ticket found for lottery number ${formatLotteryNumber(lotteryNumber)}`);
       }
     } catch (error) {
       console.error('Error searching for lottery number:', error);
@@ -441,6 +486,21 @@ const Search: React.FC = () => {
                 />
               </div>
 
+                                            {/* First Ticket Number Filter */}
+               <div>
+                 <label className="block text-sm font-medium text-secondary-700 mb-1">
+                   <BookOpen className="h-4 w-4 inline mr-1" />
+                   First Ticket Number Filter
+                 </label>
+                 <input
+                   type="number"
+                   value={filters.first_diary_number}
+                   onChange={(e) => handleFilterChange('first_diary_number', e.target.value)}
+                   className="input"
+                   placeholder="Enter lottery number to find all diaries that start with this number"
+                 />
+               </div>
+
               {/* Status */}
               <div>
                 <label className="block text-sm font-medium text-secondary-700 mb-1">
@@ -487,29 +547,7 @@ const Search: React.FC = () => {
                 />
               </div>
 
-              {/* Amount Range */}
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  <DollarSign className="h-4 w-4 inline mr-1" />
-                  Amount Range
-                </label>
-                <div className="flex space-x-2">
-                  <input
-                    type="number"
-                    value={filters.amount_min}
-                    onChange={(e) => handleFilterChange('amount_min', e.target.value)}
-                    className="input"
-                    placeholder="Min"
-                  />
-                  <input
-                    type="number"
-                    value={filters.amount_max}
-                    onChange={(e) => handleFilterChange('amount_max', e.target.value)}
-                    className="input"
-                    placeholder="Max"
-                  />
-                </div>
-              </div>
+
             </div>
 
             <div className="flex justify-end space-x-3 mt-6">

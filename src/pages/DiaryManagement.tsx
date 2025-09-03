@@ -45,6 +45,13 @@ const DiaryManagement: React.FC = () => {
   const [editingIssuer, setEditingIssuer] = useState<Issuer | null>(null);
   const [editingAllotment, setEditingAllotment] = useState<DiaryAllotment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [stats, setStats] = useState({
+    totalDiaries: 1819, // Fixed total diaries count
+    allottedDiaries: 0,
+    paidDiaries: 0,
+    totalAmountCollected: 0,
+    expectedAmountFromAllotted: 0
+  });
 
   const issuerForm = useForm<IssuerFormData>();
   const allotmentForm = useForm<AllotmentFormData>();
@@ -52,6 +59,24 @@ const DiaryManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const calculateStats = (allotmentsData: DiaryAllotment[], diariesData: Diary[]) => {
+    const totalDiaries = 1819; // Fixed total diaries count
+    const allottedDiaries = allotmentsData.filter(a => a.status === 'allotted').length;
+    const paidDiaries = allotmentsData.filter(a => a.status === 'paid').length;
+    const totalAmountCollected = allotmentsData.reduce((sum, a) => sum + a.amount_collected, 0);
+    const expectedAmountFromAllotted = allotmentsData
+      .filter(a => a.status === 'allotted')
+      .reduce((sum, a) => sum + (a.diary?.expected_amount || 0), 0);
+
+    return {
+      totalDiaries,
+      allottedDiaries,
+      paidDiaries,
+      totalAmountCollected,
+      expectedAmountFromAllotted
+    };
+  };
 
   const fetchData = async () => {
     try {
@@ -88,6 +113,10 @@ const DiaryManagement: React.FC = () => {
       setAllotments(allotmentsData || []);
       setIssuers(issuersData || []);
       setDiaries(diariesData || []);
+      
+      // Calculate and set stats
+      const calculatedStats = calculateStats(allotmentsData || [], diariesData || []);
+      setStats(calculatedStats);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Failed to fetch data');
@@ -226,13 +255,20 @@ const DiaryManagement: React.FC = () => {
 
   const updateAllotmentStatus = async (allotmentId: string, status: DiaryAllotment['status']) => {
     try {
+      const updateData: any = { status };
+      
+      // Set amount collected to 11,000 when status changes to paid
+      if (status === 'paid') {
+        updateData.amount_collected = 11000;
+      }
+      
       const { error } = await supabase
         .from('diary_allotments')
-        .update({ status })
+        .update(updateData)
         .eq('id', allotmentId);
 
       if (error) throw error;
-      toast.success(`Status updated to ${status}`);
+      toast.success(`Status updated to ${status}${status === 'paid' ? ' and amount collected set to ₹11,000' : ''}`);
       fetchData();
     } catch (error) {
       console.error('Error updating status:', error);
@@ -321,6 +357,81 @@ const DiaryManagement: React.FC = () => {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Stats Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <div className="card">
+          <div className="card-content">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <BookOpen className="h-8 w-8 text-primary-600" />
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-medium text-secondary-900">Total Diaries</h3>
+                <p className="text-2xl font-bold text-primary-600">{stats.totalDiaries}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-content">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <Clock className="h-8 w-8 text-warning-600" />
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-medium text-secondary-900">Allotted Diaries</h3>
+                <p className="text-2xl font-bold text-warning-600">{stats.allottedDiaries}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-content">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <CheckCircle className="h-8 w-8 text-success-600" />
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-medium text-secondary-900">Paid Diaries</h3>
+                <p className="text-2xl font-bold text-success-600">{stats.paidDiaries}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-content">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <DollarSign className="h-8 w-8 text-success-600" />
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-medium text-secondary-900">Total Amount Collected</h3>
+                <p className="text-2xl font-bold text-success-600">₹{stats.totalAmountCollected.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-content">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <DollarSign className="h-8 w-8 text-warning-600" />
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-medium text-secondary-900">Expected from Allotted</h3>
+                <p className="text-2xl font-bold text-warning-600">₹{stats.expectedAmountFromAllotted.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
       </div>
 
       {/* Tabs */}
