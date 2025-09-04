@@ -86,3 +86,4 @@ CREATE POLICY "Allow authenticated users to access diaries" ON diaries
 CREATE POLICY "Allow authenticated users to access audit_logs" ON audit_logs
   FOR ALL USING (auth.role() = 'authenticated');
 
+

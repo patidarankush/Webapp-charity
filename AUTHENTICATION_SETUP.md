@@ -128,3 +128,4 @@ If you encounter any issues:
 3. Review the authentication logs in Supabase
 4. Ensure all setup steps were completed correctly
 
+

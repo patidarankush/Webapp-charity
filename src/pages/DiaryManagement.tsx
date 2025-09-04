@@ -17,7 +17,9 @@ import {
   MapPin,
   BookOpen,
   DollarSign,
-  Calendar
+  Calendar,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -45,6 +47,7 @@ const DiaryManagement: React.FC = () => {
   const [editingIssuer, setEditingIssuer] = useState<Issuer | null>(null);
   const [editingAllotment, setEditingAllotment] = useState<DiaryAllotment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [lockedRecords, setLockedRecords] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState({
     totalDiaries: 1819, // Fixed total diaries count
     allottedDiaries: 0,
@@ -260,9 +263,17 @@ const DiaryManagement: React.FC = () => {
       // Set amount collected based on status
       if (status === 'paid') {
         updateData.amount_collected = 11000;
+        // Automatically lock paid records immediately
+        setLockedRecords(prev => new Set(prev).add(allotmentId));
       } else {
         // Reset amount collected to 0 for all other statuses (allotted, fully_sold, returned)
         updateData.amount_collected = 0;
+        // Unlock when status changes from paid
+        setLockedRecords(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(allotmentId);
+          return newSet;
+        });
       }
       
       const { error } = await supabase
@@ -273,15 +284,46 @@ const DiaryManagement: React.FC = () => {
       if (error) throw error;
       
       const statusMessage = status === 'paid' 
-        ? ' and amount collected set to ₹11,000' 
+        ? ', amount collected set to ₹11,000, and record locked' 
         : ' and amount collected reset to ₹0';
       
       toast.success(`Status updated to ${status}${statusMessage}`);
+      
+      // Update local state immediately for better UX
+      setAllotments(prev => prev.map(allotment => 
+        allotment.id === allotmentId 
+          ? { ...allotment, status, amount_collected: status === 'paid' ? 11000 : 0 }
+          : allotment
+      ));
+      
+      // Also fetch data to ensure consistency
       fetchData();
     } catch (error) {
       console.error('Error updating status:', error);
       toast.error('Failed to update status');
     }
+  };
+
+  const toggleLock = (allotmentId: string) => {
+    setLockedRecords(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(allotmentId)) {
+        newSet.delete(allotmentId);
+        toast.success('Record unlocked - status can now be changed');
+      } else {
+        newSet.add(allotmentId);
+        toast.success('Record locked - status is protected from accidental changes');
+      }
+      return newSet;
+    });
+  };
+
+  const isRecordLocked = (allotmentId: string) => {
+    return lockedRecords.has(allotmentId);
+  };
+
+  const shouldDisableStatusChange = (allotment: DiaryAllotment) => {
+    return allotment.status === 'paid' && isRecordLocked(allotment.id);
   };
 
   const getStatusIcon = (status: string) => {
@@ -751,13 +793,37 @@ const DiaryManagement: React.FC = () => {
                           <select
                             value={allotment.status}
                             onChange={(e) => updateAllotmentStatus(allotment.id, e.target.value as DiaryAllotment['status'])}
-                            className="text-xs border border-secondary-300 rounded px-2 py-1"
+                            disabled={shouldDisableStatusChange(allotment)}
+                            className={`text-xs border border-secondary-300 rounded px-2 py-1 ${
+                              shouldDisableStatusChange(allotment) 
+                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed' 
+                                : 'bg-white'
+                            }`}
                           >
                             <option value="allotted">Allotted</option>
                             <option value="fully_sold">Fully Sold</option>
                             <option value="paid">Paid</option>
                             <option value="returned">Returned</option>
                           </select>
+                          <button
+                            onClick={() => toggleLock(allotment.id)}
+                            className={`${
+                              isRecordLocked(allotment.id)
+                                ? 'text-warning-600 hover:text-warning-800'
+                                : 'text-secondary-600 hover:text-secondary-800'
+                            }`}
+                            title={
+                              isRecordLocked(allotment.id) 
+                                ? 'Unlock to allow status changes' 
+                                : 'Lock to prevent accidental status changes'
+                            }
+                          >
+                            {isRecordLocked(allotment.id) ? (
+                              <Lock className="h-4 w-4" />
+                            ) : (
+                              <Unlock className="h-4 w-4" />
+                            )}
+                          </button>
                           <button
                             onClick={() => handleEditAllotment(allotment)}
                             className="text-primary-600 hover:text-primary-800"
