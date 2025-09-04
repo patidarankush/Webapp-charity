@@ -117,6 +117,12 @@ const DiaryManagement: React.FC = () => {
       setIssuers(issuersData || []);
       setDiaries(diariesData || []);
       
+      // Automatically lock all paid records on load
+      const paidRecordIds = (allotmentsData || [])
+        .filter(allotment => allotment.status === 'paid')
+        .map(allotment => allotment.id);
+      setLockedRecords(new Set(paidRecordIds));
+      
       // Calculate and set stats
       const calculatedStats = calculateStats(allotmentsData || [], diariesData || []);
       setStats(calculatedStats);
