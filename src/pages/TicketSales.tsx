@@ -177,7 +177,25 @@ const TicketSales: React.FC = () => {
   const handleLotteryNumberChange = async (lotteryNumber: number) => {
     try {
       const diaryNumber = getDiaryFromLotteryNumber(lotteryNumber);
-      const diary = diaries.find(d => d.diary_number === diaryNumber);
+      
+      // For diary numbers > 1000, use server-side search for better performance
+      let diary;
+      if (diaryNumber > 1000) {
+        const { data: diaryData, error: diaryError } = await supabase
+          .from('diaries')
+          .select('*')
+          .eq('diary_number', diaryNumber)
+          .single();
+        
+        if (diaryError) {
+          console.error('Error fetching diary:', diaryError);
+          return;
+        }
+        diary = diaryData;
+      } else {
+        // For diary numbers <= 1000, use local search
+        diary = diaries.find(d => d.diary_number === diaryNumber);
+      }
       
       if (diary) {
         // Check if diary is allotted to an issuer
@@ -231,6 +249,9 @@ const TicketSales: React.FC = () => {
           
           toast.success(`Auto-filled diary ${diaryNumber} details`);
         }
+      } else {
+        console.error(`Diary ${diaryNumber} not found`);
+        toast.error(`Diary ${diaryNumber} not found`);
       }
     } catch (error) {
       console.error('Error auto-filling data:', error);
