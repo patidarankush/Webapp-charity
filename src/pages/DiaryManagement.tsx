@@ -48,6 +48,12 @@ const DiaryManagement: React.FC = () => {
   const [editingAllotment, setEditingAllotment] = useState<DiaryAllotment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [lockedRecords, setLockedRecords] = useState<Set<string>>(new Set());
+  
+  // Diary search states
+  const [diarySearchTerm, setDiarySearchTerm] = useState('');
+  const [showDiarySuggestions, setShowDiarySuggestions] = useState(false);
+  const [filteredDiaries, setFilteredDiaries] = useState<Diary[]>([]);
+  const [selectedDiary, setSelectedDiary] = useState<Diary | null>(null);
   const [stats, setStats] = useState({
     totalDiaries: 1819, // Fixed total diaries count
     allottedDiaries: 0,
@@ -62,6 +68,73 @@ const DiaryManagement: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Handle diary search with server-side search for better performance
+  useEffect(() => {
+    if (diarySearchTerm.trim() === '') {
+      setFilteredDiaries([]);
+      setShowDiarySuggestions(false);
+      return;
+    }
+
+    const searchNumber = parseInt(diarySearchTerm);
+    if (!isNaN(searchNumber)) {
+      // First try to find in local diaries array
+      const exactMatch = diaries.find(diary => diary.diary_number === searchNumber);
+      if (exactMatch) {
+        setFilteredDiaries([exactMatch]);
+        setShowDiarySuggestions(true);
+      } else {
+        // If not found locally and number is > 1000, search server-side
+        if (searchNumber > 1000) {
+          searchDiaryOnServer(searchNumber);
+        } else {
+          // Search by diary number range in local array
+          const matches = diaries.filter(diary => 
+            diary.diary_number.toString().includes(diarySearchTerm)
+          ).slice(0, 10);
+          setFilteredDiaries(matches);
+          setShowDiarySuggestions(matches.length > 0);
+        }
+      }
+    } else {
+      setFilteredDiaries([]);
+      setShowDiarySuggestions(false);
+    }
+  }, [diarySearchTerm, diaries]);
+
+  // Server-side diary search for numbers > 1000
+  const searchDiaryOnServer = async (diaryNumber: number) => {
+    try {
+      console.log(`Searching for diary ${diaryNumber} on server...`);
+      const { data: diaryData, error } = await supabase
+        .from('diaries')
+        .select('*')
+        .eq('diary_number', diaryNumber)
+        .single();
+
+      if (error) {
+        console.error('Error searching diary:', error);
+        setFilteredDiaries([]);
+        setShowDiarySuggestions(false);
+        return;
+      }
+
+      if (diaryData) {
+        console.log(`Found diary ${diaryNumber}:`, diaryData);
+        setFilteredDiaries([diaryData]);
+        setShowDiarySuggestions(true);
+      } else {
+        console.log(`Diary ${diaryNumber} not found`);
+        setFilteredDiaries([]);
+        setShowDiarySuggestions(false);
+      }
+    } catch (error) {
+      console.error('Error searching diary:', error);
+      setFilteredDiaries([]);
+      setShowDiarySuggestions(false);
+    }
+  };
 
   const calculateStats = (allotmentsData: DiaryAllotment[], diariesData: Diary[]) => {
     const totalDiaries = 1819; // Fixed total diaries count
@@ -105,17 +178,30 @@ const DiaryManagement: React.FC = () => {
 
       if (issuersError) throw issuersError;
 
-      // Fetch diaries
+      // Fetch diaries - use range queries to get all 1819 diaries
       const { data: diariesData, error: diariesError } = await supabase
         .from('diaries')
         .select('*')
-        .order('diary_number');
+        .order('diary_number')
+        .gte('diary_number', 1)
+        .lte('diary_number', 1819);
 
       if (diariesError) throw diariesError;
 
       setAllotments(allotmentsData || []);
       setIssuers(issuersData || []);
       setDiaries(diariesData || []);
+      
+      // Debug: Log the number of diaries fetched
+      console.log(`Fetched ${diariesData?.length || 0} diaries from database`);
+      
+      // Test: Check if we have diary 1001 in the fetched data
+      const diary1001 = diariesData?.find(d => d.diary_number === 1001);
+      if (diary1001) {
+        console.log('✅ Diary 1001 found in local data:', diary1001);
+      } else {
+        console.log('❌ Diary 1001 NOT found in local data');
+      }
       
       // Automatically lock all paid records on load
       const paidRecordIds = (allotmentsData || [])
@@ -198,6 +284,8 @@ const DiaryManagement: React.FC = () => {
       allotmentForm.reset();
       setShowAllotmentForm(false);
       setEditingAllotment(null);
+      setDiarySearchTerm('');
+      setSelectedDiary(null);
       fetchData();
     } catch (error: any) {
       console.error('Error saving allotment:', error);
@@ -223,6 +311,13 @@ const DiaryManagement: React.FC = () => {
     allotmentForm.setValue('issuer_id', allotment.issuer_id);
     allotmentForm.setValue('allotment_date', allotment.allotment_date);
     allotmentForm.setValue('notes', allotment.notes || '');
+    
+    // Set diary search term and selected diary for editing
+    if (allotment.diary) {
+      setSelectedDiary(allotment.diary);
+      setDiarySearchTerm(`Diary ${allotment.diary.diary_number} (Tickets: ${formatLotteryNumber(allotment.diary.ticket_start_range)}-${formatLotteryNumber(allotment.diary.ticket_end_range)})`);
+    }
+    
     setShowAllotmentForm(true);
   };
 
@@ -326,6 +421,35 @@ const DiaryManagement: React.FC = () => {
 
   const isRecordLocked = (allotmentId: string) => {
     return lockedRecords.has(allotmentId);
+  };
+
+  // Diary selection handlers
+  const handleDiarySearchChange = (value: string) => {
+    setDiarySearchTerm(value);
+    if (value.trim() === '') {
+      setSelectedDiary(null);
+      allotmentForm.setValue('diary_id', '');
+    }
+  };
+
+  const handleDiarySelect = (diary: Diary) => {
+    setSelectedDiary(diary);
+    setDiarySearchTerm(`Diary ${diary.diary_number} (Tickets: ${formatLotteryNumber(diary.ticket_start_range)}-${formatLotteryNumber(diary.ticket_end_range)})`);
+    setShowDiarySuggestions(false);
+    allotmentForm.setValue('diary_id', diary.id);
+  };
+
+  const handleDiaryInputFocus = () => {
+    if (diarySearchTerm.trim() !== '') {
+      setShowDiarySuggestions(true);
+    }
+  };
+
+  const handleDiaryInputBlur = () => {
+    // Delay hiding suggestions to allow clicking on them
+    setTimeout(() => {
+      setShowDiarySuggestions(false);
+    }, 200);
   };
 
   const shouldDisableStatusChange = (allotment: DiaryAllotment) => {
@@ -637,7 +761,12 @@ const DiaryManagement: React.FC = () => {
                     </h3>
                     <button
                       type="button"
-                      onClick={() => setShowAllotmentForm(false)}
+                      onClick={() => {
+                        setShowAllotmentForm(false);
+                        setDiarySearchTerm('');
+                        setSelectedDiary(null);
+                        setShowDiarySuggestions(false);
+                      }}
                       className="text-secondary-400 hover:text-secondary-600"
                     >
                       <X className="h-6 w-6" />
@@ -650,19 +779,47 @@ const DiaryManagement: React.FC = () => {
                         <BookOpen className="h-4 w-4 inline mr-1" />
                         Diary *
                       </label>
-                      <select
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={diarySearchTerm}
+                          onChange={(e) => handleDiarySearchChange(e.target.value)}
+                          onFocus={handleDiaryInputFocus}
+                          onBlur={handleDiaryInputBlur}
+                          className="input"
+                          placeholder="Enter diary number (e.g., 1, 500, 1819)"
+                        />
+                        {showDiarySuggestions && filteredDiaries.length > 0 && (
+                          <div className="absolute z-50 w-full mt-1 bg-white border border-secondary-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            {filteredDiaries.map((diary) => (
+                              <div
+                                key={diary.id}
+                                onClick={() => handleDiarySelect(diary)}
+                                className="px-4 py-2 hover:bg-secondary-50 cursor-pointer border-b border-secondary-100 last:border-b-0"
+                              >
+                                <div className="font-medium text-secondary-900">
+                                  Diary {diary.diary_number}
+                                </div>
+                                <div className="text-sm text-secondary-500">
+                                  Tickets: {formatLotteryNumber(diary.ticket_start_range)}-{formatLotteryNumber(diary.ticket_end_range)} | 
+                                  Amount: ₹{diary.expected_amount.toLocaleString()}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="hidden"
                         {...allotmentForm.register('diary_id', { required: 'Diary is required' })}
-                        className="input"
-                      >
-                        <option value="">Select diary</option>
-                        {diaries.map(diary => (
-                          <option key={diary.id} value={diary.id}>
-                            Diary {diary.diary_number} (Tickets: {formatLotteryNumber(diary.ticket_start_range)}-{formatLotteryNumber(diary.ticket_end_range)})
-                          </option>
-                        ))}
-                      </select>
+                      />
                       {allotmentForm.formState.errors.diary_id && (
                         <p className="mt-1 text-sm text-danger-600">{allotmentForm.formState.errors.diary_id.message}</p>
+                      )}
+                      {selectedDiary && (
+                        <p className="mt-1 text-sm text-success-600">
+                          ✓ Selected: Diary {selectedDiary.diary_number}
+                        </p>
                       )}
                     </div>
 
@@ -726,7 +883,12 @@ const DiaryManagement: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowAllotmentForm(false)}
+                    onClick={() => {
+                      setShowAllotmentForm(false);
+                      setDiarySearchTerm('');
+                      setSelectedDiary(null);
+                      setShowDiarySuggestions(false);
+                    }}
                     className="btn btn-secondary sm:w-auto"
                   >
                     Cancel

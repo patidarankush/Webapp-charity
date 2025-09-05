@@ -38,6 +38,12 @@ const TicketSales: React.FC = () => {
   const [editingTicket, setEditingTicket] = useState<TicketSale | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [autoFillData, setAutoFillData] = useState<{ issuer?: Issuer; diary?: Diary } | null>(null);
+  
+  // Diary search states
+  const [diarySearchTerm, setDiarySearchTerm] = useState('');
+  const [showDiarySuggestions, setShowDiarySuggestions] = useState(false);
+  const [filteredDiaries, setFilteredDiaries] = useState<Diary[]>([]);
+  const [selectedDiary, setSelectedDiary] = useState<Diary | null>(null);
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<TicketFormData>();
 
@@ -58,6 +64,70 @@ const TicketSales: React.FC = () => {
       setAutoFillData(null);
     }
   }, [watchedLotteryNumber]);
+
+  // Handle diary search with server-side search for better performance
+  useEffect(() => {
+    if (diarySearchTerm.trim() === '') {
+      setFilteredDiaries([]);
+      setShowDiarySuggestions(false);
+      return;
+    }
+
+    const searchNumber = parseInt(diarySearchTerm);
+    if (!isNaN(searchNumber)) {
+      // First try to find in local diaries array
+      const exactMatch = diaries.find(diary => diary.diary_number === searchNumber);
+      if (exactMatch) {
+        setFilteredDiaries([exactMatch]);
+        setShowDiarySuggestions(true);
+      } else {
+        // If not found locally and number is > 1000, search server-side
+        if (searchNumber > 1000) {
+          searchDiaryOnServer(searchNumber);
+        } else {
+          // Search by diary number range in local array
+          const matches = diaries.filter(diary => 
+            diary.diary_number.toString().includes(diarySearchTerm)
+          ).slice(0, 10);
+          setFilteredDiaries(matches);
+          setShowDiarySuggestions(matches.length > 0);
+        }
+      }
+    } else {
+      setFilteredDiaries([]);
+      setShowDiarySuggestions(false);
+    }
+  }, [diarySearchTerm, diaries]);
+
+  // Server-side diary search for numbers > 1000
+  const searchDiaryOnServer = async (diaryNumber: number) => {
+    try {
+      const { data: diaryData, error } = await supabase
+        .from('diaries')
+        .select('*')
+        .eq('diary_number', diaryNumber)
+        .single();
+
+      if (error) {
+        console.error('Error searching diary:', error);
+        setFilteredDiaries([]);
+        setShowDiarySuggestions(false);
+        return;
+      }
+
+      if (diaryData) {
+        setFilteredDiaries([diaryData]);
+        setShowDiarySuggestions(true);
+      } else {
+        setFilteredDiaries([]);
+        setShowDiarySuggestions(false);
+      }
+    } catch (error) {
+      console.error('Error searching diary:', error);
+      setFilteredDiaries([]);
+      setShowDiarySuggestions(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -83,11 +153,13 @@ const TicketSales: React.FC = () => {
 
       if (issuersError) throw issuersError;
 
-      // Fetch diaries
+      // Fetch diaries - use range queries to get all 1819 diaries
       const { data: diariesData, error: diariesError } = await supabase
         .from('diaries')
         .select('*')
-        .order('diary_number');
+        .order('diary_number')
+        .gte('diary_number', 1)
+        .lte('diary_number', 1819);
 
       if (diariesError) throw diariesError;
 
@@ -235,6 +307,13 @@ const TicketSales: React.FC = () => {
     setValue('diary_id', ticket.diary_id);
     setValue('purchase_date', ticket.purchase_date);
     setValue('amount_paid', ticket.amount_paid);
+    
+    // Set diary search term and selected diary for editing
+    if (ticket.diary) {
+      setSelectedDiary(ticket.diary);
+      setDiarySearchTerm(`Diary ${ticket.diary.diary_number} (Tickets: ${formatLotteryNumber(ticket.diary.ticket_start_range)}-${formatLotteryNumber(ticket.diary.ticket_end_range)})`);
+    }
+    
     setShowForm(true);
   };
 
@@ -261,6 +340,38 @@ const TicketSales: React.FC = () => {
     setShowForm(false);
     setEditingTicket(null);
     setAutoFillData(null);
+    setDiarySearchTerm('');
+    setSelectedDiary(null);
+    setShowDiarySuggestions(false);
+  };
+
+  // Diary selection handlers
+  const handleDiarySearchChange = (value: string) => {
+    setDiarySearchTerm(value);
+    if (value.trim() === '') {
+      setSelectedDiary(null);
+      setValue('diary_id', '');
+    }
+  };
+
+  const handleDiarySelect = (diary: Diary) => {
+    setSelectedDiary(diary);
+    setDiarySearchTerm(`Diary ${diary.diary_number} (Tickets: ${formatLotteryNumber(diary.ticket_start_range)}-${formatLotteryNumber(diary.ticket_end_range)})`);
+    setShowDiarySuggestions(false);
+    setValue('diary_id', diary.id);
+  };
+
+  const handleDiaryInputFocus = () => {
+    if (diarySearchTerm.trim() !== '') {
+      setShowDiarySuggestions(true);
+    }
+  };
+
+  const handleDiaryInputBlur = () => {
+    // Delay hiding suggestions to allow clicking on them
+    setTimeout(() => {
+      setShowDiarySuggestions(false);
+    }, 200);
   };
 
   const filteredTickets = tickets.filter(ticket =>
@@ -468,19 +579,47 @@ const TicketSales: React.FC = () => {
                         <BookOpen className="h-4 w-4 inline mr-1" />
                         Diary *
                       </label>
-                      <select
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={diarySearchTerm}
+                          onChange={(e) => handleDiarySearchChange(e.target.value)}
+                          onFocus={handleDiaryInputFocus}
+                          onBlur={handleDiaryInputBlur}
+                          className="input"
+                          placeholder="Enter diary number (e.g., 1, 500, 1819)"
+                        />
+                        {showDiarySuggestions && filteredDiaries.length > 0 && (
+                          <div className="absolute z-50 w-full mt-1 bg-white border border-secondary-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            {filteredDiaries.map((diary) => (
+                              <div
+                                key={diary.id}
+                                onClick={() => handleDiarySelect(diary)}
+                                className="px-4 py-2 hover:bg-secondary-50 cursor-pointer border-b border-secondary-100 last:border-b-0"
+                              >
+                                <div className="font-medium text-secondary-900">
+                                  Diary {diary.diary_number}
+                                </div>
+                                <div className="text-sm text-secondary-500">
+                                  Tickets: {formatLotteryNumber(diary.ticket_start_range)}-{formatLotteryNumber(diary.ticket_end_range)} | 
+                                  Amount: ₹{diary.expected_amount.toLocaleString()}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="hidden"
                         {...register('diary_id', { required: 'Diary is required' })}
-                        className="input"
-                      >
-                        <option value="">Select diary</option>
-                        {diaries.map(diary => (
-                          <option key={diary.id} value={diary.id}>
-                            Diary {diary.diary_number} (Tickets: {formatLotteryNumber(diary.ticket_start_range)}-{formatLotteryNumber(diary.ticket_end_range)})
-                          </option>
-                        ))}
-                      </select>
+                      />
                       {errors.diary_id && (
                         <p className="mt-1 text-sm text-danger-600">{errors.diary_id.message}</p>
+                      )}
+                      {selectedDiary && (
+                        <p className="mt-1 text-sm text-success-600">
+                          ✓ Selected: Diary {selectedDiary.diary_number}
+                        </p>
                       )}
                     </div>
 
