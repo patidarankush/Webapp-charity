@@ -217,6 +217,10 @@ const TicketSales: React.FC = () => {
           setValue('amount_paid', 500, { shouldValidate: true });
           setValue('purchase_date', new Date().toISOString().split('T')[0], { shouldValidate: true });
           
+          // Update diary input display
+          setSelectedDiary(diary);
+          setDiarySearchTerm(`Diary ${diary.diary_number} (Tickets: ${formatLotteryNumber(diary.ticket_start_range)}-${formatLotteryNumber(diary.ticket_end_range)})`);
+          
           // Trigger form validation
           setTimeout(() => {
             const form = document.querySelector('form');
@@ -237,6 +241,10 @@ const TicketSales: React.FC = () => {
           setValue('issuer_id', allotmentData.issuer.id, { shouldValidate: true });
           setValue('amount_paid', 500, { shouldValidate: true });
           setValue('purchase_date', new Date().toISOString().split('T')[0], { shouldValidate: true });
+          
+          // Update diary input display
+          setSelectedDiary(diary);
+          setDiarySearchTerm(`Diary ${diary.diary_number} (Tickets: ${formatLotteryNumber(diary.ticket_start_range)}-${formatLotteryNumber(diary.ticket_end_range)})`);
           
           // Trigger form validation after a short delay to ensure values are set
           setTimeout(() => {
