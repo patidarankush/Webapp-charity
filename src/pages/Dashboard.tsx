@@ -135,7 +135,13 @@ const Dashboard: React.FC = () => {
     { name: 'Returned', value: stats?.diaries_returned || 0, color: '#ef4444' },
   ];
 
-  const topIssuers = issuerPerformance.slice(0, 10);
+  const topIssuers = issuerPerformance
+    .map(issuer => ({
+      ...issuer,
+      total_amount_received: (issuer.diaries_paid || 0) * 11000
+    }))
+    .sort((a, b) => b.total_amount_received - a.total_amount_received)
+    .slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -273,7 +279,7 @@ const Dashboard: React.FC = () => {
         {/* Top Issuers Bar Chart */}
         <div className="card">
           <div className="card-header">
-            <h3 className="text-lg font-medium text-secondary-900">Top Issuers by Collection</h3>
+            <h3 className="text-lg font-medium text-secondary-900">Top Issuers by Total Amount Received</h3>
           </div>
           <div className="card-content">
             <div className="h-80">
@@ -289,9 +295,9 @@ const Dashboard: React.FC = () => {
                   />
                   <YAxis />
                   <Tooltip 
-                    formatter={(value: number) => [`₹${value.toLocaleString()}`, 'Amount Collected']}
+                    formatter={(value: number) => [`₹${value.toLocaleString()}`, 'Total Amount Received']}
                   />
-                  <Bar dataKey="total_collected" fill="#0ea5e9" />
+                  <Bar dataKey="total_amount_received" fill="#0ea5e9" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -316,6 +322,7 @@ const Dashboard: React.FC = () => {
                   <th className="table-header-cell">Tickets Sold</th>
                   <th className="table-header-cell">Amount Collected</th>
                   <th className="table-header-cell">Expected Amount</th>
+                  <th className="table-header-cell">Total Amount Received</th>
                   <th className="table-header-cell">Collection %</th>
                 </tr>
               </thead>
@@ -329,6 +336,7 @@ const Dashboard: React.FC = () => {
                     <td className="table-cell">{issuer?.tickets_sold || 0}</td>
                     <td className="table-cell">₹{issuer?.total_collected?.toLocaleString() || '0'}</td>
                     <td className="table-cell">₹{issuer?.expected_amount?.toLocaleString() || '0'}</td>
+                    <td className="table-cell">₹{((issuer?.diaries_paid || 0) * 11000).toLocaleString()}</td>
                     <td className="table-cell">
                       <span className={`
                         badge
